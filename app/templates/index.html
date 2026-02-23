@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <title>Lottelligence</title>
+
+    <!-- Galvenais stils -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Chart.js bibliotēka -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Papildu stils diagrammai un leģendai -->
+    <style>
+        /* Konteiners grafikam un leģendai */
+        .chart-flex {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            height: 350px;
+        }
+
+        /* Leģenda labajā pusē */
+        .legend-box {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 15px;
+            color: #c6c494;
+            cursor: pointer;
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            margin-right: 8px;
+        }
+
+        /* Labākā modeļa apgaismojums */
+        .legend-best {
+            font-weight: 700;
+            font-size: 17px;
+            color: #ffffff;
+        }
+
+        /* Dubultā tabula */
+        .double-table {
+            margin-bottom: 25px;
+        }
+
+        .double-table table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .double-table th, .double-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #444;
+            color: #c6c494;
+            text-align: left;
+        }
+
+        .double-table th {
+            font-weight: 700;
+            color: #e0dfc7;
+        }
+    </style>
+</head>
+
+<body>
+<div class="page-container">
+
+    <!-- Galvene -->
+    <header>
+        <h1 class="logo">
+            <a href="/">Lottelligence</a>
+        </h1>
+
+    </header>
+
+    <!-- Kļūdu panelis -->
+    {% if error %}
+    <div class="error-panel">
+        <strong>Kļūda:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- Galvenais 2x2 režģis -->
+    <main class="grid-container">
+
+        <!-- ===================== Panelis 1 ===================== -->
+        <section class="card compact">
+            <h2>Datu ielāde un eksperimenta uzstādījumi</h2>
+
+            <form action="{{ url_for('main.run') }}" method="post" enctype="multipart/form-data">
+
+                <!-- Trīs elementi vienā rindā -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dataset">Datu fails (CSV vai XLSX)</label>
+                        <label class="file-upload">
+                            <span id="file-label">Izvēlēties failu</span>
+                            <input type="file" name="dataset" id="dataset-input">
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lottery">Loterijas tips</label>
+                        <select id="lottery" name="lottery">
+                            <option value="viking" {% if form_state.lottery == 'viking' %}selected{% endif %}>Viking Lotto</option>
+                            <option value="euro" {% if form_state.lottery == 'euro' %}selected{% endif %}>Eurojackpot</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="file_format">Faila formāts</label>
+                        <select id="file_format" name="file_format">
+                            <option value="raw" {% if form_state.file_format == 'raw' %}selected{% endif %}>RAW LatLoto</option>
+                            <option value="prepared" {% if form_state.file_format == 'prepared' %}selected{% endif %}>Apstrādāts</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Poga zem rindas -->
+                <div class="form-actions">
+                    <button type="submit">Palaist eksperimentu</button>
+                </div>
+
+            </form>
+        </section>
+
+        <!-- ===================== Panelis 2 ===================== -->
+        <section class="card compact">
+            <h2>Modeļi un statuss</h2>
+
+            <div class="status-bar status-top-right">
+                <span class="status-label">Statuss:</span>
+
+                {% if status == 'done' %}
+                    <span class="status-dot status-done"></span>
+                    <span class="status-text">Pabeigts</span>
+                {% else %}
+                    <span class="status-dot status-idle"></span>
+                    <span class="status-text">Gaida</span>
+                {% endif %}
+            </div>
+
+            <p>Eksperiments izmanto trīs modeļus:</p>
+            <ul>
+                <li>Logistiskā regresija (SGDClassifier)</li>
+                <li>RandomForestClassifier</li>
+                <li>XGBoost / GradientBoosting</li>
+            </ul>
+        </section>
+
+        <!-- ===================== Panelis 3: Rezultātu tabulas ===================== -->
+        <section class="card">
+            <h2>Rezultāti</h2>
+
+            {% if results %}
+
+            <div class="double-table">
+
+                <!-- Tabula 1: Metrīkas -->
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Modelis</th>
+                            <th>LogLoss</th>
+                            <th>Brier</th>
+                            <th>hit@K_main</th>
+                            <th>hit@10</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                        <tr>
+                            <td>{{ row.model }}</td>
+                            <td>{{ "%.4f"|format(row.logloss) }}</td>
+                            <td>{{ "%.4f"|format(row.brier) }}</td>
+                            <td>{{ "%.4f"|format(row.hit_k_main) }}</td>
+                            <td>{{ "%.4f"|format(row.hit_10) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <!-- Tabula 2: Servisa dati -->
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Modelis</th>
+                            <th>K_main</th>
+                            <th>Treniņa rindas</th>
+                            <th>Testa rindas</th>
+                            <th>Treniņš no</th>
+                            <th>Treniņš līdz</th>
+                            <th>Tests no</th>
+                            <th>Tests līdz</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                        <tr>
+                            <td>{{ row.model }}</td>
+                            <td>{{ row.K_main or row.k_main }}</td>
+                            <td>{{ row.train_rows }}</td>
+                            <td>{{ row.test_rows }}</td>
+
+                            <td>{{ row.train_date_from | ddmmyyyy }}</td>
+                            <td>{{ row.train_date_to   | ddmmyyyy }}</td>
+                            <td>{{ row.test_date_from  | ddmmyyyy }}</td>
+                            <td>{{ row.test_date_to    | ddmmyyyy }}</td>
+
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+            </div>
+
+            <div style="margin-top: 15px; font-size: 14px; color: #c6c494;">
+                <p>* LogLoss un Brier ir kļūdas rādītāji - jo mazāks, jo labāk.</p>
+                <p>** hit@K_main un hit@10 ir trāpījumu rādītāji - jo lielāks, jo labāk.</p>
+            </div>
+
+            {% else %}
+            <p>Rezultātu vēl nav.</p>
+            {% endif %}
+        </section>
+
+        <!-- ===================== Panelis 4: Diagrammas ===================== -->
+        <section class="card">
+            <h2>Diagrammas un salīdzinājums</h2>
+
+            <div id="metric-toggles" style="text-align:center; margin-bottom:10px;">
+                <label><input type="checkbox" checked onclick="toggleMetric(0)"> LogLoss</label>
+                <label><input type="checkbox" checked onclick="toggleMetric(1)"> Brier</label>
+                <label><input type="checkbox" checked onclick="toggleMetric(2)"> hit@K_main</label>
+                <label><input type="checkbox" checked onclick="toggleMetric(3)"> hit@10</label>
+            </div>
+
+            <canvas id="barChart" width="600" height="350"></canvas>
+        </section>
+
+    </main>
+</div>
+
+<!-- JSON ar rezultātiem -->
+<script id="results-json" type="application/json">
+    {{ results | tojson }}
+</script>
+
+<!-- Diagrammas loģika -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    /* 1) Nolasa rezultātus */
+    const el = document.getElementById("results-json");
+    if (!el) return;
+
+    let results = [];
+    try {
+        results = JSON.parse(el.textContent || "[]");
+    } catch (e) {
+        console.error("JSON kļūda:", e);
+        return;
+    }
+
+    if (!results.length) return;
+
+    /* 2) Atrod labāko modeli (pēc mazākā LogLoss) */
+    const bestModel = results.reduce((best, r) =>
+        r.logloss < best.logloss ? r : best
+    );
+
+    /* 3) Sagatavo datus diagrammai */
+    const labels = results.map(r => r.model);
+
+    function colorFor(model, baseColor) {
+        return model === bestModel.model
+            ? baseColor.replace("0.5", "0.9")
+            : baseColor;
+    }
+
+    function borderFor(model) {
+        return model === bestModel.model ? "#ffffff" : "rgba(0,0,0,0)";
+    }
+
+    function borderWidthFor(model) {
+        return model === bestModel.model ? 3 : 1;
+    }
+
+    const datasets = [
+        {
+            label: "LogLoss",
+            data: results.map(r => r.logloss),
+            backgroundColor: results.map(r =>
+                colorFor(r.model, "rgba(255, 99, 132, 0.5)")
+            ),
+            borderColor: results.map(r => borderFor(r.model)),
+            borderWidth: results.map(r => borderWidthFor(r.model))
+        },
+        {
+            label: "Brier",
+            data: results.map(r => r.brier),
+            backgroundColor: results.map(r =>
+                colorFor(r.model, "rgba(54, 162, 235, 0.5)")
+            ),
+            borderColor: results.map(r => borderFor(r.model)),
+            borderWidth: results.map(r => borderWidthFor(r.model))
+        },
+        {
+            label: "hit@K_main",
+            data: results.map(r => r.hit_k_main),
+            backgroundColor: results.map(r =>
+                colorFor(r.model, "rgba(255, 206, 86, 0.5)")
+            ),
+            borderColor: results.map(r => borderFor(r.model)),
+            borderWidth: results.map(r => borderWidthFor(r.model))
+        },
+        {
+            label: "hit@10",
+            data: results.map(r => r.hit_10),
+            backgroundColor: results.map(r =>
+                colorFor(r.model, "rgba(75, 192, 192, 0.5)")
+            ),
+            borderColor: results.map(r => borderFor(r.model)),
+            borderWidth: results.map(r => borderWidthFor(r.model))
+        }
+    ];
+
+    /* 4) Izveido diagrammu */
+    const canvas = document.getElementById("barChart");
+    if (!canvas) return;
+
+    const chart = new Chart(canvas, {
+        type: "bar",
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            scales: {
+                x: { ticks: { color: "#c6c494" } },
+                y: { ticks: { color: "#c6c494" } }
+            },
+            plugins: {
+                legend: { labels: { color: "#c6c494" } }
+            }
+        }
+    });
+
+    /* Metrikas pārslēgšana */
+    window.toggleMetric = function(index) {
+        chart.data.datasets[index].hidden =
+            !chart.data.datasets[index].hidden;
+        chart.update();
+    };
+});
+</script>
+
+<!-- Izvēlētā faila nosaukums -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const input = document.getElementById("dataset-input");
+    const label = document.getElementById("file-label");
+
+    if (input) {
+        input.addEventListener("change", function () {
+            label.textContent = this.files.length > 0
+                ? this.files[0].name
+                : "Izvēlēties failu";
+        });
+    }
+});
+</script>
+
+</body>
+</html>
