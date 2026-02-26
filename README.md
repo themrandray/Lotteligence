@@ -139,7 +139,7 @@ Rezultātā tiek iegūta varbūtību matrica `proba` ar izmēru:
   (UI joprojām rāda “xgboost” salīdzināšanas vienkāršībai)
 - abos gadījumos tiek izmantots `predict_proba()`, lai metrikas būtu salīdzināmas
 
-## Metrikas (ko tās nozīmē)
+## Metrikas
 
 Metrikas tiek rēķinātas uz **test** daļas (jaunākie 30%).  
 Šajā prototipā metrikas tiek vērtētas **varbūtību līmenī**, nevis kā “vai modelis uzminēja izlozi”
